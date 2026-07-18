@@ -17,7 +17,10 @@ if TYPE_CHECKING:
 
 class Lead(Base):
     __tablename__ = "leads"
-    __table_args__ = (Index("ix_leads_created_at", text("created_at DESC")),)
+    __table_args__ = (
+        Index("ix_leads_created_at", text("created_at DESC")),
+        Index("ix_leads_status_created_at", "status", text("created_at DESC")),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()

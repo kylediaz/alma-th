@@ -6,10 +6,9 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 
 from botocore.exceptions import BotoCoreError, ClientError
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import EmailStr, TypeAdapter, ValidationError
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_attorney
@@ -18,9 +17,9 @@ from app.db import get_db
 from app.models.enums import LeadStatus
 from app.models.lead import Lead
 from app.models.user import User
-from app.schemas.leads import LeadCreateResponse, LeadOut, LeadStatusUpdate
+from app.schemas.leads import LeadCreateResponse, LeadListResponse, LeadOut, LeadStatusUpdate
 from app.services import storage
-from app.services.leads import LeadValidationError, create_lead
+from app.services.leads import LeadValidationError, create_lead, list_leads
 
 logger = logging.getLogger(__name__)
 
@@ -69,13 +68,25 @@ def submit_lead(
     return LeadCreateResponse(id=lead.id, status=lead.status)
 
 
-@router.get("", response_model=list[LeadOut])
+@router.get("", response_model=LeadListResponse)
 def get_leads(
     db: Session = Depends(get_db),
     _user: User = Depends(require_attorney),
-) -> list[LeadOut]:
-    leads = db.scalars(select(Lead).order_by(Lead.created_at.desc())).all()
-    return [LeadOut.model_validate(lead) for lead in leads]
+    limit: int = Query(20, ge=1, le=100),
+    cursor: datetime | None = Query(None),
+    status_filter: LeadStatus | None = Query(None, alias="status"),
+) -> LeadListResponse:
+    leads, next_cursor, has_more = list_leads(
+        db,
+        limit=limit,
+        cursor=cursor,
+        status=status_filter,
+    )
+    return LeadListResponse(
+        items=[LeadOut.model_validate(lead) for lead in leads],
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
 
 
 @router.patch("/{lead_id}", response_model=LeadOut)

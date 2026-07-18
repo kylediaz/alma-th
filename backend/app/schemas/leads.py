@@ -28,3 +28,9 @@ class LeadCreateResponse(BaseModel):
 
 class LeadStatusUpdate(BaseModel):
     status: LeadStatus = Field(description="Only REACHED_OUT is accepted")
+
+
+class LeadListResponse(BaseModel):
+    items: list[LeadOut]
+    next_cursor: datetime | None
+    has_more: bool

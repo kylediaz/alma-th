@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import PurePosixPath
 
 from fastapi import UploadFile
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -24,6 +25,29 @@ class LeadValidationError(Exception):
     def __init__(self, message: str) -> None:
         self.message = message
         super().__init__(message)
+
+
+def list_leads(
+    db: Session,
+    *,
+    limit: int,
+    cursor: datetime | None = None,
+    status: LeadStatus | None = None,
+) -> tuple[list[Lead], datetime | None, bool]:
+    stmt = select(Lead)
+    if status is not None:
+        stmt = stmt.where(Lead.status == status)
+    if cursor is not None:
+        if cursor.tzinfo is None:
+            cursor = cursor.replace(tzinfo=timezone.utc)
+        stmt = stmt.where(Lead.created_at < cursor)
+    stmt = stmt.order_by(Lead.created_at.desc(), Lead.id.desc()).limit(limit + 1)
+
+    rows = list(db.scalars(stmt).all())
+    has_more = len(rows) > limit
+    items = rows[:limit]
+    next_cursor = items[-1].created_at if has_more else None
+    return items, next_cursor, has_more
 
 
 def create_lead(
