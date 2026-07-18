@@ -24,7 +24,7 @@
 2. **Ownership:** no lead ownership model in v1. Any authenticated attorney can view leads and mark `REACHED_OUT`.
 3. **States:** only `PENDING` and `REACHED_OUT`, matching the problem statement.
 4. **Duplicates:** allow multiple submissions from the same email (each is a new lead). Deduping is out of scope.
-5. **Accounts:** users with `account_type = ATTORNEY` are seeded / created out-of-band (env or seed script); no public self-signup.
+5. **Accounts:** users with `account_type = ATTORNEY` are created out-of-band (dev: `backend/scripts/dev_seed.py`); no public self-signup.
 6. **Updates:** attorneys can update lead state (`PENDING` → `REACHED_OUT`). Prospect field edits after submit are out of scope.
 
 # Design (Human + AI)
