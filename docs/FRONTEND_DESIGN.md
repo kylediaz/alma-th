@@ -101,22 +101,23 @@ Newest first (API already sorts `created_at DESC`).
 
 ### Pagination
 
-Leads are paginated via **URL search params** (cursor-based, matching the API). The page reads params and drives the list fetch from them.
+Leads use **offset pagination** via URL search params (bookmarkable, browser Back/Forward friendly).
 
-| Param    | Meaning                         | Default | Notes                                      |
-| -------- | ------------------------------- | ------- | ------------------------------------------ |
-| `limit`  | items per page                  | `20`    | Clamp to allowlist (10/20/50)              |
-| `cursor` | opaque page cursor (`created_at` ISO datetime of last item on previous page) | omitted | Omit on first page                         |
+| Param       | Meaning            | Default | Notes                         |
+| ----------- | ------------------ | ------- | ----------------------------- |
+| `page`      | 1-based page index | `1`     |                               |
+| `page_size` | items per page     | `20`    | Allowlist: 10 / 20 / 50       |
+| `status`    | optional filter    | omitted | `PENDING` \| `REACHED_OUT`    |
 
-Example: `/admin/dashboard/leads?limit=20&cursor=2026-07-18T12:00:00Z`
+Example: `/admin/dashboard/leads?page=2&page_size=20&status=PENDING`
 
-Prev/Next update the URL via `router.replace`. A client-side cursor history stack enables Previous (API has no offset). Fetch is driven by the URL params.
+URL state is managed with **nuqs**; list data with **TanStack Query** (`queryKey: ["leads", page, page_size, status]`). TanStack Table owns pagination UI state synced to the URL.
 
 **API:**
 
 ```
-GET /leads?limit=20&cursor=<iso-datetime>
-→ { items: LeadOut[], next_cursor: datetime | null, has_more: boolean }
+GET /leads?page=1&page_size=20&status=PENDING
+→ { items: LeadOut[], total: number, page: number, page_size: number }
 ```
 
 ### Actions
@@ -171,12 +172,14 @@ frontend/src/
     admin/
       login/page.tsx                 # login form (inlined, "use client")
       dashboard/
-        leads/page.tsx               # leads DataTable + cursor URL params
+        leads/page.tsx               # leads DataTable + page URL params (nuqs + React Query)
   components/
-    data-table.tsx                   # generic TanStack table shell
+    data-table.tsx                   # TanStack table + pagination controls
+    app-providers.tsx                # QueryClient + NuqsAdapter
     lead-form.tsx
     resume-viewer.tsx                # follow-up: react-pdf (PDF) / download (DOCX)
     site-header.tsx
+    dashboard-shell.tsx
   lib/
     api.ts                           # fetch wrappers + credentials
     types.ts
@@ -185,14 +188,14 @@ frontend/src/
 
 UI primitives: existing shadcn (`Button`, `Input`, `Label`/`Field`, `Table`, `Badge`, `Alert`, `Dialog`/`Sheet`, `Card` as needed for form/login/viewer containers only).
 
-Dependency: `@tanstack/react-table`. `react-pdf` for in-browser resume view (follow-up).
+Dependencies: `@tanstack/react-table`, `@tanstack/react-query`, `nuqs`. `react-pdf` for in-browser resume view (follow-up).
 
 ## Suggested build order
 
 1. `lib/api.ts` + `types.ts` + `constants.ts` + env (`NEXT_PUBLIC_API_URL`)
 2. Blank `/` + `/get-started` form
 3. `/admin/login` + auth redirect helpers
-4. `/admin/dashboard/leads` DataTable + cursor URL pagination + mark-reached-out + resume download
+4. `/admin/dashboard/leads` DataTable + page URL pagination + status filter
 5. `resume-viewer` with `react-pdf` (PDF view + DOCX download fallback)
 6. Wire footer/header links and empty/loading/error states
 

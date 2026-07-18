@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 
@@ -27,59 +27,23 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { ApiError, getMe, logout } from "@/lib/api";
-import type { User } from "@/lib/types";
+import { useLogout } from "@/features/auth/hooks/use-logout";
+import { useMe } from "@/features/auth/hooks/use-me";
+import { ApiError } from "@/lib/api-client";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<User | null>(null);
-  const [authChecking, setAuthChecking] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const meQuery = useMe();
+  const logoutMutation = useLogout();
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function checkAuth() {
-      try {
-        const me = await getMe();
-        if (!cancelled) {
-          setUser(me);
-          setAuthChecking(false);
-        }
-      } catch (err) {
-        if (cancelled) {
-          return;
-        }
-        if (err instanceof ApiError && err.status === 401) {
-          router.replace("/admin/login");
-          return;
-        }
-        setError(
-          err instanceof ApiError
-            ? err.message
-            : "Unable to verify session. Try again.",
-        );
-        setAuthChecking(false);
-      }
+    if (meQuery.error instanceof ApiError && meQuery.error.status === 401) {
+      router.replace("/admin/login");
     }
+  }, [meQuery.error, router]);
 
-    void checkAuth();
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
-
-  async function handleLogout() {
-    try {
-      await logout();
-    } catch {
-      // still leave the console
-    }
-    router.replace("/admin/login");
-  }
-
-  if (authChecking) {
+  if (meQuery.isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
         <p className="text-sm text-muted-foreground">Checking session…</p>
@@ -87,11 +51,21 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) {
+  if (meQuery.error || !meQuery.data) {
+    if (meQuery.error instanceof ApiError && meQuery.error.status === 401) {
+      return (
+        <div className="flex flex-1 items-center justify-center p-6">
+          <p className="text-sm text-muted-foreground">Redirecting…</p>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-1 flex-col items-start gap-4 p-6">
         <p className="text-sm text-destructive">
-          {error ?? "Session unavailable."}
+          {meQuery.error instanceof ApiError
+            ? meQuery.error.message
+            : "Session unavailable."}
         </p>
         <Button
           type="button"
@@ -138,7 +112,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   }
                 />
                 <DropdownMenuContent side="top" align="start">
-                  <DropdownMenuItem onClick={() => void handleLogout()}>
+                  <DropdownMenuItem
+                    onClick={() => logoutMutation.mutate()}
+                    disabled={logoutMutation.isPending}
+                  >
                     Log out
                   </DropdownMenuItem>
                 </DropdownMenuContent>

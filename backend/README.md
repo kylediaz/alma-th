@@ -64,8 +64,9 @@ uv run uvicorn app.main:app --reload --port 8000
 | `POST`  | `/auth/logout`       | attorney                               |
 | `GET`   | `/auth/me`           | attorney                               |
 | `GET`   | `/leads`             | attorney                               |
+| `GET`   | `/leads/{id}`        | attorney (includes `resume_url`)       |
 | `PATCH` | `/leads/{id}`        | attorney (`{"status":"REACHED_OUT"}`)  |
-| `GET`   | `/leads/{id}/resume` | attorney                               |
+| `GET`   | `/leads/{id}/resume` | attorney (presigned URL JSON, not file)|
 
 
 

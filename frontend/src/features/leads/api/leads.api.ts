@@ -1,0 +1,64 @@
+import { ApiError, apiFetch, parseDetail } from "@/lib/api-client";
+import type {
+  Lead,
+  LeadDetail,
+  LeadListResponse,
+  ListLeadsParams,
+  ResumeLink,
+} from "@/features/leads/types";
+
+export async function listLeads(
+  params: ListLeadsParams,
+): Promise<LeadListResponse> {
+  const search = new URLSearchParams();
+  search.set("page", String(params.page ?? 1));
+  search.set("page_size", String(params.page_size ?? 20));
+  if (params.status) {
+    search.set("status", params.status);
+  }
+
+  const response = await apiFetch(`/leads?${search.toString()}`);
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseDetail(response));
+  }
+
+  return response.json() as Promise<LeadListResponse>;
+}
+
+export async function getLead(id: string): Promise<LeadDetail> {
+  const response = await apiFetch(`/leads/${id}`);
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseDetail(response));
+  }
+
+  return response.json() as Promise<LeadDetail>;
+}
+
+export async function updateLeadStatus(
+  id: string,
+  status: "REACHED_OUT",
+): Promise<Lead> {
+  const response = await apiFetch(`/leads/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseDetail(response));
+  }
+
+  return response.json() as Promise<Lead>;
+}
+
+export async function getResumeLink(id: string): Promise<ResumeLink> {
+  const response = await apiFetch(`/leads/${id}/resume`);
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseDetail(response));
+  }
+
+  return response.json() as Promise<ResumeLink>;
+}

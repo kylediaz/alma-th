@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import BinaryIO
+from urllib.parse import quote
 
 import boto3
 from botocore.client import Config
@@ -43,3 +44,28 @@ def get_stream(key: str):
     except ClientError as exc:
         raise FileNotFoundError(f"Object not found: {key}") from exc
     return response["Body"]
+
+
+def presign_get(
+    key: str,
+    *,
+    expires_in: int = 3600,
+    filename: str | None = None,
+    content_type: str | None = None,
+) -> str:
+    settings = get_settings()
+    params: dict[str, str] = {
+        "Bucket": settings.s3_bucket,
+        "Key": key,
+    }
+    if filename:
+        params["ResponseContentDisposition"] = (
+            f"inline; filename*=UTF-8''{quote(filename)}"
+        )
+    if content_type:
+        params["ResponseContentType"] = content_type
+    return _client().generate_presigned_url(
+        "get_object",
+        Params=params,
+        ExpiresIn=expires_in,
+    )

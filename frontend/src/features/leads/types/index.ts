@@ -1,10 +1,3 @@
-export type User = {
-  id: string;
-  username: string;
-  display_name: string;
-  account_type: "ATTORNEY";
-};
-
 export type LeadStatus = "PENDING" | "REACHED_OUT";
 
 export type Lead = {
@@ -22,6 +15,24 @@ export type Lead = {
 
 export type LeadListResponse = {
   items: Lead[];
-  next_cursor: string | null;
-  has_more: boolean;
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type LeadDetail = Lead & {
+  resume_url: string;
+};
+
+export type ResumeLink = {
+  url: string;
+  filename: string;
+  content_type: string;
+  expires_in: number;
+};
+
+export type ListLeadsParams = {
+  page?: number;
+  page_size?: number;
+  status?: LeadStatus | null;
 };

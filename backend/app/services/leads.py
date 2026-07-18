@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import PurePosixPath
 
 from fastapi import UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -30,24 +30,25 @@ class LeadValidationError(Exception):
 def list_leads(
     db: Session,
     *,
-    limit: int,
-    cursor: datetime | None = None,
+    page: int,
+    page_size: int,
     status: LeadStatus | None = None,
-) -> tuple[list[Lead], datetime | None, bool]:
+) -> tuple[list[Lead], int]:
+    count_stmt = select(func.count()).select_from(Lead)
+    if status is not None:
+        count_stmt = count_stmt.where(Lead.status == status)
+    total = db.scalar(count_stmt) or 0
+
     stmt = select(Lead)
     if status is not None:
         stmt = stmt.where(Lead.status == status)
-    if cursor is not None:
-        if cursor.tzinfo is None:
-            cursor = cursor.replace(tzinfo=timezone.utc)
-        stmt = stmt.where(Lead.created_at < cursor)
-    stmt = stmt.order_by(Lead.created_at.desc(), Lead.id.desc()).limit(limit + 1)
-
-    rows = list(db.scalars(stmt).all())
-    has_more = len(rows) > limit
-    items = rows[:limit]
-    next_cursor = items[-1].created_at if has_more else None
-    return items, next_cursor, has_more
+    stmt = (
+        stmt.order_by(Lead.created_at.desc(), Lead.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    items = list(db.scalars(stmt).all())
+    return items, total
 
 
 def create_lead(

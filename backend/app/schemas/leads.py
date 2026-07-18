@@ -32,5 +32,17 @@ class LeadStatusUpdate(BaseModel):
 
 class LeadListResponse(BaseModel):
     items: list[LeadOut]
-    next_cursor: datetime | None
-    has_more: bool
+    total: int
+    page: int
+    page_size: int
+
+
+class LeadDetailOut(LeadOut):
+    resume_url: str
+
+
+class ResumeLinkOut(BaseModel):
+    url: str
+    filename: str
+    content_type: str
+    expires_in: int

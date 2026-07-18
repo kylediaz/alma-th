@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
@@ -11,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -22,7 +20,8 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { ApiError, login } from "@/lib/api";
+import { useLogin } from "@/features/auth/hooks/use-login";
+import { ApiError } from "@/lib/api-client";
 
 const formSchema = z.object({
   username: z
@@ -39,8 +38,8 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 export default function AdminLoginPage() {
-  const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const loginMutation = useLogin();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -50,21 +49,20 @@ export default function AdminLoginPage() {
     },
   });
 
-  async function onSubmit(data: FormValues) {
+  function onSubmit(data: FormValues) {
     setServerError(null);
-    try {
-      await login(data.username, data.password);
-      router.replace("/admin/dashboard/leads");
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setServerError(err.message);
-      } else {
-        setServerError("Unable to sign in. Try again.");
-      }
-    }
+    loginMutation.mutate(data, {
+      onError: (err) => {
+        if (err instanceof ApiError) {
+          setServerError(err.message);
+        } else {
+          setServerError("Unable to sign in. Try again.");
+        }
+      },
+    });
   }
 
-  const pending = form.formState.isSubmitting;
+  const pending = loginMutation.isPending;
 
   return (
     <main className="flex flex-1 items-center justify-center p-6">

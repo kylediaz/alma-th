@@ -3,11 +3,9 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from urllib.parse import quote
 
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import StreamingResponse
 from pydantic import EmailStr, TypeAdapter, ValidationError
 from sqlalchemy.orm import Session
 
@@ -17,7 +15,14 @@ from app.db import get_db
 from app.models.enums import LeadStatus
 from app.models.lead import Lead
 from app.models.user import User
-from app.schemas.leads import LeadCreateResponse, LeadListResponse, LeadOut, LeadStatusUpdate
+from app.schemas.leads import (
+    LeadCreateResponse,
+    LeadDetailOut,
+    LeadListResponse,
+    LeadOut,
+    LeadStatusUpdate,
+    ResumeLinkOut,
+)
 from app.services import storage
 from app.services.leads import LeadValidationError, create_lead, list_leads
 
@@ -25,6 +30,22 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 _email_adapter = TypeAdapter(EmailStr)
+
+RESUME_URL_TTL_SECONDS = 3600
+
+
+def _resume_url(lead: Lead) -> str:
+    return storage.presign_get(
+        lead.resume_storage_key,
+        expires_in=RESUME_URL_TTL_SECONDS,
+        filename=lead.resume_original_filename,
+        content_type=lead.resume_content_type or None,
+    )
+
+
+def _lead_detail(lead: Lead) -> LeadDetailOut:
+    base = LeadOut.model_validate(lead)
+    return LeadDetailOut(**base.model_dump(), resume_url=_resume_url(lead))
 
 
 @router.post("", response_model=LeadCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -72,21 +93,42 @@ def submit_lead(
 def get_leads(
     db: Session = Depends(get_db),
     _user: User = Depends(require_attorney),
-    limit: int = Query(20, ge=1, le=100),
-    cursor: datetime | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     status_filter: LeadStatus | None = Query(None, alias="status"),
 ) -> LeadListResponse:
-    leads, next_cursor, has_more = list_leads(
+    leads, total = list_leads(
         db,
-        limit=limit,
-        cursor=cursor,
+        page=page,
+        page_size=page_size,
         status=status_filter,
     )
     return LeadListResponse(
         items=[LeadOut.model_validate(lead) for lead in leads],
-        next_cursor=next_cursor,
-        has_more=has_more,
+        total=total,
+        page=page,
+        page_size=page_size,
     )
+
+
+@router.get("/{lead_id}", response_model=LeadDetailOut)
+def get_lead(
+    lead_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_attorney),
+) -> LeadDetailOut:
+    lead = db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+
+    try:
+        return _lead_detail(lead)
+    except (BotoCoreError, ClientError) as exc:
+        logger.exception("Resume URL failed for lead=%s", lead_id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to create resume link",
+        ) from exc
 
 
 @router.patch("/{lead_id}", response_model=LeadOut)
@@ -115,34 +157,28 @@ def update_lead_status(
     return LeadOut.model_validate(lead)
 
 
-@router.get("/{lead_id}/resume")
-def download_resume(
+@router.get("/{lead_id}/resume", response_model=ResumeLinkOut)
+def get_resume_link(
     lead_id: uuid.UUID,
     db: Session = Depends(get_db),
     _user: User = Depends(require_attorney),
-) -> StreamingResponse:
+) -> ResumeLinkOut:
     lead = db.get(Lead, lead_id)
     if lead is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
 
     try:
-        body = storage.get_stream(lead.resume_storage_key)
-    except FileNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Resume file not found",
-        ) from exc
+        url = _resume_url(lead)
     except (BotoCoreError, ClientError) as exc:
-        logger.exception("Resume fetch failed for lead=%s", lead_id)
+        logger.exception("Resume URL failed for lead=%s", lead_id)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to fetch resume",
+            detail="Failed to create resume link",
         ) from exc
 
-    filename = lead.resume_original_filename
-    disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
-    return StreamingResponse(
-        body.iter_chunks(),
-        media_type=lead.resume_content_type or "application/octet-stream",
-        headers={"Content-Disposition": disposition},
+    return ResumeLinkOut(
+        url=url,
+        filename=lead.resume_original_filename,
+        content_type=lead.resume_content_type,
+        expires_in=RESUME_URL_TTL_SECONDS,
     )

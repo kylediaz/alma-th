@@ -1,210 +1,133 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import type { ColumnDef } from "@tanstack/react-table";
+import type { PaginationState } from "@tanstack/react-table";
+import { useRouter } from "next/navigation";
+import {
+  parseAsInteger,
+  parseAsStringEnum,
+  useQueryStates,
+} from "nuqs";
+import { Suspense } from "react";
 
+import { leadColumns } from "@/app/admin/dashboard/leads/columns";
 import { DataTable } from "@/components/data-table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ApiError, listLeads } from "@/lib/api";
-import type { Lead } from "@/lib/types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useLeads } from "@/features/leads/hooks/use-leads";
+import type { Lead, LeadStatus } from "@/features/leads/types";
+import { ApiError } from "@/lib/api-client";
 
-const DEFAULT_LIMIT = 20;
-const LIMIT_ALLOWLIST = new Set([10, 20, 50]);
+const STATUS_ALL = "all";
+const PAGE_SIZE = 50;
 
-function parseLimit(raw: string | null): number {
-  const value = Number(raw);
-  if (!Number.isFinite(value) || !LIMIT_ALLOWLIST.has(value)) {
-    return DEFAULT_LIMIT;
-  }
-  return value;
-}
-
-function formatReceived(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return date.toLocaleString();
-}
+const leadsSearchParams = {
+  page: parseAsInteger.withDefault(1),
+  status: parseAsStringEnum<LeadStatus>(["PENDING", "REACHED_OUT"]),
+};
 
 function LeadsPageContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const [params, setParams] = useQueryStates(leadsSearchParams, {
+    history: "push",
+  });
 
-  const limit = parseLimit(searchParams.get("limit"));
-  const cursor = searchParams.get("cursor");
+  const page = Math.max(1, params.page);
+  const status = params.status;
 
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [cursorHistory, setCursorHistory] = useState<(string | null)[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadToken, setReloadToken] = useState(0);
+  const pagination: PaginationState = {
+    pageIndex: page - 1,
+    pageSize: PAGE_SIZE,
+  };
 
-  function replaceParams(next: { cursor?: string | null; limit?: number }) {
-    const params = new URLSearchParams();
-    const nextLimit = next.limit ?? limit;
-    if (nextLimit !== DEFAULT_LIMIT) {
-      params.set("limit", String(nextLimit));
-    }
-    const nextCursorValue =
-      next.cursor === undefined ? cursor : next.cursor;
-    if (nextCursorValue) {
-      params.set("cursor", nextCursorValue);
-    }
-    const qs = params.toString();
-    router.replace(
-      qs ? `/admin/dashboard/leads?${qs}` : "/admin/dashboard/leads",
-    );
+  const leadsQuery = useLeads({
+    page,
+    page_size: PAGE_SIZE,
+    status,
+  });
+
+  const pageCount = leadsQuery.data
+    ? Math.ceil(leadsQuery.data.total / PAGE_SIZE)
+    : 0;
+
+  function handlePaginationChange(
+    updater: PaginationState | ((old: PaginationState) => PaginationState),
+  ) {
+    const next = typeof updater === "function" ? updater(pagination) : updater;
+    void setParams({
+      page: next.pageIndex + 1,
+    });
   }
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadLeads() {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await listLeads({ limit, cursor });
-        if (cancelled) {
-          return;
-        }
-        setLeads(response.items);
-        setNextCursor(response.next_cursor);
-        setHasMore(response.has_more);
-      } catch (err) {
-        if (cancelled) {
-          return;
-        }
-        if (err instanceof ApiError && err.status === 401) {
-          router.replace("/admin/login");
-          return;
-        }
-        setError(
-          err instanceof ApiError
-            ? err.message
-            : "Unable to load leads. Try again.",
-        );
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadLeads();
-    return () => {
-      cancelled = true;
-    };
-  }, [limit, cursor, router, reloadToken]);
-
-  function goNext() {
-    if (!hasMore || !nextCursor) {
-      return;
-    }
-    setCursorHistory((history) => [...history, cursor]);
-    replaceParams({ cursor: nextCursor });
+  function handleStatusChange(value: string | null) {
+    const nextStatus =
+      value === "PENDING" || value === "REACHED_OUT" ? value : null;
+    void setParams({
+      status: nextStatus,
+      page: 1,
+    });
   }
 
-  function goPrevious() {
-    if (cursorHistory.length === 0) {
-      return;
-    }
-    const previous = cursorHistory[cursorHistory.length - 1] ?? null;
-    setCursorHistory((history) => history.slice(0, -1));
-    replaceParams({ cursor: previous });
-  }
-
-  const columns: ColumnDef<Lead>[] = [
-    {
-      accessorKey: "created_at",
-      header: "Received",
-      cell: ({ row }) => formatReceived(row.original.created_at),
-    },
-    {
-      id: "name",
-      header: "Name",
-      cell: ({ row }) =>
-        `${row.original.first_name} ${row.original.last_name}`,
-    },
-    {
-      accessorKey: "email",
-      header: "Email",
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }) => (
-        <Badge
-          variant={
-            row.original.status === "REACHED_OUT" ? "secondary" : "outline"
-          }
-        >
-          {row.original.status}
-        </Badge>
-      ),
-    },
-  ];
+  const errorMessage =
+    leadsQuery.error instanceof ApiError
+      ? leadsQuery.error.message
+      : leadsQuery.error
+        ? "Unable to load leads. Try again."
+        : null;
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
-      <div className="space-y-1">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-medium">Leads</h1>
-        <p className="text-sm text-muted-foreground">
-          Newest submissions first.
-        </p>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Status</span>
+          <Select
+            value={status ?? STATUS_ALL}
+            onValueChange={handleStatusChange}
+          >
+            <SelectTrigger aria-label="Filter by status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={STATUS_ALL}>All</SelectItem>
+              <SelectItem value="PENDING">Pending</SelectItem>
+              <SelectItem value="REACHED_OUT">Reached out</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      {error ? (
+      {errorMessage ? (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          <p>{error}</p>
+          <p>{errorMessage}</p>
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="mt-2"
-            onClick={() => setReloadToken((token) => token + 1)}
+            onClick={() => void leadsQuery.refetch()}
           >
             Retry
           </Button>
         </div>
       ) : null}
 
-      {loading ? (
-        <div className="rounded-md border px-4 py-8 text-center text-sm text-muted-foreground">
-          Loading leads…
-        </div>
-      ) : (
-        <>
-          <DataTable columns={columns} data={leads} />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground">
-              Page {cursorHistory.length + 1}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={cursorHistory.length === 0 || loading}
-                onClick={goPrevious}
-              >
-                Previous
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!hasMore || loading}
-                onClick={goNext}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
+      <DataTable
+        columns={leadColumns}
+        data={leadsQuery.data?.items ?? []}
+        pageCount={pageCount}
+        pagination={pagination}
+        onPaginationChange={handlePaginationChange}
+        isLoading={leadsQuery.isLoading}
+        onRowClick={(lead: Lead) =>
+          router.push(`/admin/dashboard/leads/${lead.id}`)
+        }
+      />
     </div>
   );
 }
