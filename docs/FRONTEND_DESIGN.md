@@ -123,7 +123,11 @@ GET /leads?page=1&page_size=20
 
 ### Actions
 
-1. **Resume** — `GET /leads/{id}/resume` with credentials; download via blob + `Content-Disposition` filename (or fallback to `resume_original_filename`). Do not rely on bare `window.open` alone for cookie reliability.
+1. **Resume (in-browser view)** — open a viewer (dialog/sheet) rather than forcing a download.
+   - Fetch `GET /leads/{id}/resume` with `credentials: "include"` into a `Blob` / object URL (do not use bare `window.open` — cookie reliability across origins is poor).
+   - **PDF:** render with [`react-pdf`](https://projects.wojtekmaj.pl/react-pdf/) (`Document` / `Page`) from that blob/URL. Support multi-page navigation and basic loading/error UI.
+   - **DOCX:** `react-pdf` is PDF-only (PDF.js). For `.docx`, show a short “preview unavailable” state plus a download fallback (same blob + `resume_original_filename`).
+   - Optional secondary “Download” control is fine; primary UX is view-in-place for PDFs.
 2. **Mark reached out** — `PATCH /leads/{id}` with `{ "status": "REACHED_OUT" }`; update row in place; disable/hide action once reached out. Idempotent if already `REACHED_OUT`.
 
 Empty state: short message when the list is empty.
@@ -178,6 +182,7 @@ frontend/src/
     lead-form.tsx
     login-form.tsx
     leads-table.tsx
+    resume-viewer.tsx                # dialog/sheet + react-pdf (PDF) / download fallback (DOCX)
     site-header.tsx
   lib/
     api.ts                           # fetch wrappers + credentials
@@ -185,7 +190,9 @@ frontend/src/
     constants.ts                     # resume extensions, max bytes
 ```
 
-UI primitives: existing shadcn (`Button`, `Input`, `Label`/`Field`, `Table`, `Badge`, `Alert`, `Card` as needed for form/login containers only).
+UI primitives: existing shadcn (`Button`, `Input`, `Label`/`Field`, `Table`, `Badge`, `Alert`, `Dialog`/`Sheet`, `Card` as needed for form/login/viewer containers only).
+
+Dependency: `react-pdf` (and its peer PDF.js worker setup for Next/App Router).
 
 ## Suggested build order
 
@@ -193,15 +200,16 @@ UI primitives: existing shadcn (`Button`, `Input`, `Label`/`Field`, `Table`, `Ba
 2. Blank `/` + `/get-started` form
 3. `/admin/login` + auth redirect helpers
 4. Backend: paginated `GET /leads` (if not done yet)
-5. `/admin/dashboard/leads` table + URL pagination + resume/status actions
-6. Wire footer/header links and empty/loading/error states
+5. `/admin/dashboard/leads` table + URL pagination + mark-reached-out
+6. `resume-viewer` with `react-pdf` (PDF view + DOCX download fallback)
+7. Wire footer/header links and empty/loading/error states
 
 ## Out of scope (frontend v1)
 
 - Lead assignment / ownership UI
 - Extra statuses beyond `PENDING` / `REACHED_OUT`
 - Duplicate-email warnings
-- Resume preview / virus scan messaging
+- In-browser DOCX rendering (PDF via react-pdf only); virus scan messaging
 - Public attorney signup or password reset
 - Filters, search, sorting controls (pagination is in scope)
 - Dark-mode product theming beyond default tokens
