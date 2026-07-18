@@ -101,33 +101,28 @@ Newest first (API already sorts `created_at DESC`).
 
 ### Pagination
 
-Leads are paginated via **URL search params** (server-side). The page reads params and drives the list fetch from them.
+Leads are paginated via **URL search params** (cursor-based, matching the API). The page reads params and drives the list fetch from them.
 
-| Param       | Meaning              | Default | Notes                                      |
-| ----------- | -------------------- | ------- | ------------------------------------------ |
-| `page`      | 1-based page index   | `1`     | Invalid/missing → normalize to `1`         |
-| `page_size` | items per page       | `20`    | Clamp to a small allowlist (e.g. 10/20/50) |
+| Param    | Meaning                         | Default | Notes                                      |
+| -------- | ------------------------------- | ------- | ------------------------------------------ |
+| `limit`  | items per page                  | `20`    | Clamp to allowlist (10/20/50)              |
+| `cursor` | opaque page cursor (`created_at` ISO datetime of last item on previous page) | omitted | Omit on first page                         |
 
-Example: `/admin/dashboard/leads?page=2&page_size=20`
+Example: `/admin/dashboard/leads?limit=20&cursor=2026-07-18T12:00:00Z`
 
-Prev/Next (or page controls) update the URL via `router.push` / `router.replace` — fetch is driven by the URL, not local page state alone.
+Prev/Next update the URL via `router.replace`. A client-side cursor history stack enables Previous (API has no offset). Fetch is driven by the URL params.
 
-**API (required):** paginated list response, e.g.
+**API:**
 
 ```
-GET /leads?page=1&page_size=20
-→ { items: LeadOut[], total: number, page: number, page_size: number }
+GET /leads?limit=20&cursor=<iso-datetime>
+→ { items: LeadOut[], next_cursor: datetime | null, has_more: boolean }
 ```
-
-(`GET /leads` currently returns a bare list; backend must add pagination before or with the dashboard.)
 
 ### Actions
 
-1. **Resume (in-browser view)** — open a viewer (dialog/sheet) rather than forcing a download.
-   - Fetch `GET /leads/{id}/resume` with `credentials: "include"` into a `Blob` / object URL (do not use bare `window.open` — cookie reliability across origins is poor).
-   - **PDF:** render with [`react-pdf`](https://projects.wojtekmaj.pl/react-pdf/) (`Document` / `Page`) from that blob/URL. Support multi-page navigation and basic loading/error UI.
-   - **DOCX:** `react-pdf` is PDF-only (PDF.js). For `.docx`, show a short “preview unavailable” state plus a download fallback (same blob + `resume_original_filename`).
-   - Optional secondary “Download” control is fine; primary UX is view-in-place for PDFs.
+1. **Resume** — `GET /leads/{id}/resume` with credentials; download via blob + filename (from `Content-Disposition` or `resume_original_filename`). Do not rely on bare `window.open` alone for cookie reliability.
+   - **Follow-up:** in-browser PDF viewer with [`react-pdf`](https://projects.wojtekmaj.pl/react-pdf/); DOCX stays download-only.
 2. **Mark reached out** — `PATCH /leads/{id}` with `{ "status": "REACHED_OUT" }`; update row in place; disable/hide action once reached out. Idempotent if already `REACHED_OUT`.
 
 Empty state: short message when the list is empty.
@@ -174,15 +169,13 @@ frontend/src/
     page.tsx                         # blank landing
     get-started/page.tsx             # public LeadForm
     admin/
-      login/page.tsx                 # LoginForm
+      login/page.tsx                 # login form (inlined, "use client")
       dashboard/
-        layout.tsx                   # optional: header + auth gate shell
-        leads/page.tsx               # LeadsTable (reads URL params)
+        leads/page.tsx               # leads DataTable + cursor URL params
   components/
+    data-table.tsx                   # generic TanStack table shell
     lead-form.tsx
-    login-form.tsx
-    leads-table.tsx
-    resume-viewer.tsx                # dialog/sheet + react-pdf (PDF) / download fallback (DOCX)
+    resume-viewer.tsx                # follow-up: react-pdf (PDF) / download (DOCX)
     site-header.tsx
   lib/
     api.ts                           # fetch wrappers + credentials
@@ -192,17 +185,16 @@ frontend/src/
 
 UI primitives: existing shadcn (`Button`, `Input`, `Label`/`Field`, `Table`, `Badge`, `Alert`, `Dialog`/`Sheet`, `Card` as needed for form/login/viewer containers only).
 
-Dependency: `react-pdf` (and its peer PDF.js worker setup for Next/App Router).
+Dependency: `@tanstack/react-table`. `react-pdf` for in-browser resume view (follow-up).
 
 ## Suggested build order
 
 1. `lib/api.ts` + `types.ts` + `constants.ts` + env (`NEXT_PUBLIC_API_URL`)
 2. Blank `/` + `/get-started` form
 3. `/admin/login` + auth redirect helpers
-4. Backend: paginated `GET /leads` (if not done yet)
-5. `/admin/dashboard/leads` table + URL pagination + mark-reached-out
-6. `resume-viewer` with `react-pdf` (PDF view + DOCX download fallback)
-7. Wire footer/header links and empty/loading/error states
+4. `/admin/dashboard/leads` DataTable + cursor URL pagination + mark-reached-out + resume download
+5. `resume-viewer` with `react-pdf` (PDF view + DOCX download fallback)
+6. Wire footer/header links and empty/loading/error states
 
 ## Out of scope (frontend v1)
 
