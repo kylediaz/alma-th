@@ -11,7 +11,12 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
-    "@embedpdf/react-pdf-viewer": "^2.14.4",
+    "@embedpdf/core": "^2.14.4",
+    "@embedpdf/engines": "^2.14.4",
+    "@embedpdf/plugin-document-manager": "^2.14.4",
+    "@embedpdf/plugin-render": "^2.14.4",
+    "@embedpdf/plugin-scroll": "^2.14.4",
+    "@embedpdf/plugin-viewport": "^2.14.4",
     "@hookform/resolvers": "^5.4.0",
     "@hugeicons/core-free-icons": "^4.2.2",
     "@hugeicons/react": "^1.1.9",

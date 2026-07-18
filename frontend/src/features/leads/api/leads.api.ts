@@ -1,11 +1,34 @@
 import { ApiError, apiFetch, parseDetail } from "@/lib/api-client";
 import type {
+  CreateLeadInput,
   Lead,
+  LeadCreateResponse,
   LeadDetail,
   LeadListResponse,
   ListLeadsParams,
   ResumeLink,
 } from "@/features/leads/types";
+
+export async function createLead(
+  input: CreateLeadInput,
+): Promise<LeadCreateResponse> {
+  const body = new FormData();
+  body.set("first_name", input.first_name);
+  body.set("last_name", input.last_name);
+  body.set("email", input.email);
+  body.set("resume", input.resume);
+
+  const response = await apiFetch("/leads", {
+    method: "POST",
+    body,
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseDetail(response));
+  }
+
+  return response.json() as Promise<LeadCreateResponse>;
+}
 
 export async function listLeads(
   params: ListLeadsParams,

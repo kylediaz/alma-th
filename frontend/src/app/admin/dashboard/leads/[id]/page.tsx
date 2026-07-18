@@ -87,20 +87,9 @@ export default function LeadDetailPage() {
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2 lg:overflow-hidden">
       <div className="flex flex-col gap-6 overflow-auto p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <h1 className="text-lg font-medium">
-            {lead.first_name} {lead.last_name}
-          </h1>
-          {lead.status === "PENDING" ? (
-            <Button
-              type="button"
-              disabled={markReachedOut.isPending}
-              onClick={() => markReachedOut.mutate()}
-            >
-              {markReachedOut.isPending ? "Updating…" : "Mark reached out"}
-            </Button>
-          ) : null}
-        </div>
+        <h1 className="text-lg font-medium">
+          {lead.first_name} {lead.last_name}
+        </h1>
 
         {markReachedOut.error ? (
           <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -113,7 +102,7 @@ export default function LeadDetailPage() {
         <dl className="grid max-w-xl gap-4 text-sm">
           <div className="grid gap-1">
             <dt className="text-muted-foreground">Status</dt>
-            <dd>
+            <dd className="flex flex-wrap items-center gap-2">
               <Badge
                 variant={
                   lead.status === "REACHED_OUT" ? "secondary" : "outline"
@@ -121,6 +110,16 @@ export default function LeadDetailPage() {
               >
                 {formatStatus(lead.status)}
               </Badge>
+              {lead.status === "PENDING" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={markReachedOut.isPending}
+                  onClick={() => markReachedOut.mutate()}
+                >
+                  {markReachedOut.isPending ? "Updating…" : "Mark reached out"}
+                </Button>
+              ) : null}
             </dd>
           </div>
           <div className="grid gap-1">

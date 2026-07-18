@@ -31,6 +31,18 @@ export type ResumeLink = {
   expires_in: number;
 };
 
+export type LeadCreateResponse = {
+  id: string;
+  status: LeadStatus;
+};
+
+export type CreateLeadInput = {
+  first_name: string;
+  last_name: string;
+  email: string;
+  resume: File;
+};
+
 export type ListLeadsParams = {
   page?: number;
   page_size?: number;
