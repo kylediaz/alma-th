@@ -9,6 +9,11 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+_TEMPLATE_SUBJECTS = {
+    "request-received": "We received your request",
+    "new-lead": "New lead submitted",
+}
+
 
 def configure_resend() -> None:
     api_key = (get_settings().resend_api_key or "").strip()
@@ -29,6 +34,7 @@ def send_template(*, to_email: str, template_id: str, template_data: dict[str, A
         {
             "from": settings.from_email,
             "to": [to_email],
+            "subject": _TEMPLATE_SUBJECTS.get(template_id, "Alma notification"),
             "template": {
                 "id": template_id,
                 "variables": template_data,

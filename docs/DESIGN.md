@@ -20,7 +20,7 @@
 
 ## Assumptions
 
-1. **Attorney notification:** email a single configured firm inbox / attorney address (`ATTORNEY_NOTIFY_EMAIL`), not every attorney. No round-robin assignment in v1.
+1. **Attorney notification:** email a single configured firm inbox / attorney address (`ATTORNEY_NOTIFY_EMAIL`), not every attorney. No round-robin assignment in v1. If `ATTORNEY_NOTIFY_EMAIL` is empty, skip the attorney new-lead email (still enqueue prospect confirmation).
 2. **Ownership:** no lead ownership model in v1. Any authenticated attorney can view leads and mark `REACHED_OUT`.
 3. **States:** only `PENDING` and `REACHED_OUT`, matching the problem statement.
 4. **Duplicates:** allow multiple submissions from the same email (each is a new lead). Deduping is out of scope.
@@ -79,11 +79,12 @@ flowchart LR
   - Bucket comes from config (`S3_BUCKET` / env), not from the DB.
   - Local MinIO (S3-compatible) via `docker compose`; interface allows real S3 later.
   - No virus scanning / content inspection (out of scope).
+  - App enforces `RESUME_MAX_BYTES` on create; production should also enforce upload size at the reverse proxy (later).
 5. **Email**
   - **Transactional outbox:** create handler enqueues rows in `email_outbox` (not a direct Resend call from the handler). A sender (same-process flush after commit, or a small in-process loop) reads pending rows and calls Resend.
   - Provider behind an interface; **Resend** is the chosen implementation (external API — no local mail container).
   - Dev: console/log sink or provider test mode so E2E works without real mail if keys missing.
-  - Two messages on create: prospect confirmation, attorney alert (includes lead summary; resume via internal UI, not necessarily attached).
+  - On create: always enqueue prospect confirmation; enqueue attorney alert only when `ATTORNEY_NOTIFY_EMAIL` is set (includes lead summary + `PUBLIC_URL` dashboard link; resume via internal UI, not necessarily attached).
   - Send failures update the outbox row (`FAILED` / increment `attempts`); the lead always remains.
 
 #### Email templating (Resend-hosted)
@@ -99,7 +100,7 @@ Templates live in the **Resend dashboard** (Resend-hosted templates), not as Jin
 
 **Send (outbox flusher):** for each pending row → Resend send API with stored `template_id` + `template_data` + `to_email`. Apply `FROM_EMAIL` from env at send time (not stored per row in v1).
 
-**Env vars:** `RESEND_API_KEY`, `FROM_EMAIL`, `ATTORNEY_NOTIFY_EMAIL`, plus the two template ids above (see `.env.example`).
+**Env vars:** `RESEND_API_KEY`, `FROM_EMAIL`, `ATTORNEY_NOTIFY_EMAIL`, `PUBLIC_URL` (frontend origin for dashboard links in attorney email), plus the two template ids above (see `.env.example`).
 
 **Suggested template variables** (document in Resend when creating templates; keep names aligned here):
 
@@ -120,7 +121,7 @@ Templates live in the **Resend dashboard** (Resend-hosted templates), not as Jin
 1. Prospect submits form → Next → `POST /leads`.
 2. API validates fields + file type/size basics.
 3. Allocate lead `id` (UUID in app), upload resume to MinIO at `leads/{id}/resume…`. If upload fails → abort; no DB writes.
-4. In **one DB transaction:** insert `leads` row (`PENDING`) + two `email_outbox` rows (`PROSPECT_CONFIRMATION`, `ATTORNEY_NEW_LEAD`) with resolved `template_id` / `template_data` / `to_email`, status `PENDING`. If this transaction fails after a successful upload, an orphan object in MinIO is acceptable for the takehome (no compensating delete required in v1).
+4. In **one DB transaction:** insert `leads` row (`PENDING`) + `email_outbox` row for `PROSPECT_CONFIRMATION`, and (only if `ATTORNEY_NOTIFY_EMAIL` is set) an `ATTORNEY_NEW_LEAD` row, with resolved `template_id` / `template_data` / `to_email`, status `PENDING`. Attorney `dashboard_url` uses `PUBLIC_URL`. If this transaction fails after a successful upload, an orphan object in MinIO is acceptable for the takehome (no compensating delete required in v1).
 5. After commit: flush pending outbox for this lead (sync in-request is OK): sender reads each row → Resend; on success mark `SENT` + `sent_at`; on failure increment `attempts`, set `last_error`, mark `FAILED`. **Lead is never rolled back for email failure.**
 6. Return success to prospect.
 
@@ -374,6 +375,7 @@ CREATE INDEX ix_email_outbox_pending ON email_outbox (status, created_at);
 - Duplicate email detection
 - Virus scanning, OCR, resume parsing
 - Multi-tenant firms, RBAC beyond “attorney”
+- Reverse-proxy upload size limits (app enforces `RESUME_MAX_BYTES`; proxy enforcement later)
 - Separate async job queue (Redis/Celery/RQ, etc.). Transactional outbox + same-process flush after commit is in scope; a dedicated worker process can wait until email latency matters
 
 # Pending Questions

@@ -112,42 +112,50 @@ def create_lead(
         updated_at=now,
     )
 
-    common_data = {
-        "first_name": first_name,
-        "last_name": last_name,
-        "email": email,
-        "lead_id": str(lead_id),
-    }
-
     outbox_rows = [
         EmailOutbox(
             id=uuid.uuid4(),
             lead_id=lead_id,
             kind=EmailOutboxKind.PROSPECT_CONFIRMATION,
             to_email=email,
-            template_id=settings.resend_template_prospect_confirmation,
-            template_data=common_data,
-            status=EmailOutboxStatus.PENDING,
-            attempts=0,
-            created_at=now,
-            updated_at=now,
-        ),
-        EmailOutbox(
-            id=uuid.uuid4(),
-            lead_id=lead_id,
-            kind=EmailOutboxKind.ATTORNEY_NEW_LEAD,
-            to_email=(settings.attorney_notify_email or "").strip() or email,
-            template_id=settings.resend_template_attorney_new_lead,
-            template_data={
-                **common_data,
-                "resume_original_filename": original_filename,
-            },
+            template_id="request-received",
+            template_data={"LEAD_FIRST_NAME": first_name},
             status=EmailOutboxStatus.PENDING,
             attempts=0,
             created_at=now,
             updated_at=now,
         ),
     ]
+
+    attorney_notify = (settings.attorney_notify_email or "").strip()
+    if attorney_notify:
+        outbox_rows.append(
+            EmailOutbox(
+                id=uuid.uuid4(),
+                lead_id=lead_id,
+                kind=EmailOutboxKind.ATTORNEY_NEW_LEAD,
+                to_email=attorney_notify,
+                template_id="new-lead",
+                template_data={
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "email": email,
+                    "dashboard_url": (
+                        f"{settings.public_url.rstrip('/')}"
+                        f"/admin/dashboard/leads/{lead_id}"
+                    ),
+                },
+                status=EmailOutboxStatus.PENDING,
+                attempts=0,
+                created_at=now,
+                updated_at=now,
+            ),
+        )
+    else:
+        logger.warning(
+            "ATTORNEY_NOTIFY_EMAIL empty; skipping attorney new-lead email for lead=%s",
+            lead_id,
+        )
 
     try:
         db.add(lead)

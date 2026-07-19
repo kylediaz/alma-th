@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/leads", tags=["leads"])
 _email_adapter = TypeAdapter(EmailStr)
 
-RESUME_URL_TTL_SECONDS = 3600
+RESUME_URL_TTL_SECONDS = 300
 
 
 def _resume_url(lead: Lead) -> str:

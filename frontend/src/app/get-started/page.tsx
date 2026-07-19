@@ -17,7 +17,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { useCreateLead } from "@/features/leads/hooks/use-create-lead";
 import { ApiError } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
 
 const RESUME_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -98,136 +97,137 @@ export default function GetStartedPage() {
           </div>
 
           <div className="flex flex-col py-(--card-spacing)">
-            <CardContent className="relative">
-              <form
-                id="get-started-form"
-                className={cn(submitted && "invisible")}
-                onSubmit={form.handleSubmit(onSubmit)}
-                aria-hidden={submitted}
-              >
-                <FieldGroup>
-                  <Controller
-                    name="first_name"
-                    control={form.control}
-                    render={({ field, fieldState }) => (
-                      <Field data-invalid={fieldState.invalid}>
-                        <FieldLabel htmlFor="get-started-first-name">
-                          First name
-                        </FieldLabel>
-                        <Input
-                          {...field}
-                          id="get-started-first-name"
-                          autoComplete="given-name"
-                          disabled={pending || submitted}
-                          aria-invalid={fieldState.invalid}
-                        />
-                        {fieldState.invalid && (
-                          <FieldError errors={[fieldState.error]} />
-                        )}
-                      </Field>
-                    )}
-                  />
-
-                  <Controller
-                    name="last_name"
-                    control={form.control}
-                    render={({ field, fieldState }) => (
-                      <Field data-invalid={fieldState.invalid}>
-                        <FieldLabel htmlFor="get-started-last-name">
-                          Last name
-                        </FieldLabel>
-                        <Input
-                          {...field}
-                          id="get-started-last-name"
-                          autoComplete="family-name"
-                          disabled={pending || submitted}
-                          aria-invalid={fieldState.invalid}
-                        />
-                        {fieldState.invalid && (
-                          <FieldError errors={[fieldState.error]} />
-                        )}
-                      </Field>
-                    )}
-                  />
-
-                  <Controller
-                    name="email"
-                    control={form.control}
-                    render={({ field, fieldState }) => (
-                      <Field data-invalid={fieldState.invalid}>
-                        <FieldLabel htmlFor="get-started-email">
-                          Email
-                        </FieldLabel>
-                        <Input
-                          {...field}
-                          id="get-started-email"
-                          type="email"
-                          autoComplete="email"
-                          disabled={pending || submitted}
-                          aria-invalid={fieldState.invalid}
-                        />
-                        {fieldState.invalid && (
-                          <FieldError errors={[fieldState.error]} />
-                        )}
-                      </Field>
-                    )}
-                  />
-
-                  <Controller
-                    name="resume"
-                    control={form.control}
-                    render={({ field, fieldState }) => (
-                      <Field data-invalid={fieldState.invalid}>
-                        <FieldLabel htmlFor="get-started-resume">
-                          Resume
-                        </FieldLabel>
-                        <Input
-                          id="get-started-resume"
-                          type="file"
-                          accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                          disabled={pending || submitted}
-                          aria-invalid={fieldState.invalid}
-                          onChange={(event) => {
-                            field.onChange(event.target.files?.[0]);
-                          }}
-                        />
-                        {fieldState.invalid && (
-                          <FieldError errors={[fieldState.error]} />
-                        )}
-                      </Field>
-                    )}
-                  />
-
-                  <div
-                    className={cn(!serverError && "invisible")}
-                    aria-hidden={!serverError}
-                  >
-                    <Alert variant="destructive">
-                      <AlertDescription>
-                        {serverError ?? "Placeholder"}
-                      </AlertDescription>
-                    </Alert>
-                  </div>
-
-                  <Field>
-                    <Button
-                      type="submit"
-                      form="get-started-form"
-                      className="w-full"
-                      disabled={pending || submitted}
-                      size="lg"
-                    >
-                      {pending ? "Submitting…" : "Submit"}
-                    </Button>
-                  </Field>
-                </FieldGroup>
-              </form>
-
+            <CardContent>
               {submitted ? (
-                <p className="absolute inset-0 flex items-center px-(--card-spacing) text-sm">
-                  Thanks — your application was submitted successfully.
-                </p>
-              ) : null}
+                <div
+                  className="flex min-h-48 flex-col justify-center gap-2"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <p className="text-base font-medium">Application submitted</p>
+                  <p className="text-sm text-muted-foreground">
+                    Thanks — we received your request and will be in touch by
+                    email.
+                  </p>
+                </div>
+              ) : (
+                <form
+                  id="get-started-form"
+                  onSubmit={form.handleSubmit(onSubmit)}
+                >
+                  <FieldGroup>
+                    <Controller
+                      name="first_name"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid}>
+                          <FieldLabel htmlFor="get-started-first-name">
+                            First name
+                          </FieldLabel>
+                          <Input
+                            {...field}
+                            id="get-started-first-name"
+                            autoComplete="given-name"
+                            disabled={pending}
+                            aria-invalid={fieldState.invalid}
+                          />
+                          {fieldState.invalid && (
+                            <FieldError errors={[fieldState.error]} />
+                          )}
+                        </Field>
+                      )}
+                    />
+
+                    <Controller
+                      name="last_name"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid}>
+                          <FieldLabel htmlFor="get-started-last-name">
+                            Last name
+                          </FieldLabel>
+                          <Input
+                            {...field}
+                            id="get-started-last-name"
+                            autoComplete="family-name"
+                            disabled={pending}
+                            aria-invalid={fieldState.invalid}
+                          />
+                          {fieldState.invalid && (
+                            <FieldError errors={[fieldState.error]} />
+                          )}
+                        </Field>
+                      )}
+                    />
+
+                    <Controller
+                      name="email"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid}>
+                          <FieldLabel htmlFor="get-started-email">
+                            Email
+                          </FieldLabel>
+                          <Input
+                            {...field}
+                            id="get-started-email"
+                            type="email"
+                            autoComplete="email"
+                            disabled={pending}
+                            aria-invalid={fieldState.invalid}
+                          />
+                          {fieldState.invalid && (
+                            <FieldError errors={[fieldState.error]} />
+                          )}
+                        </Field>
+                      )}
+                    />
+
+                    <Controller
+                      name="resume"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid}>
+                          <FieldLabel htmlFor="get-started-resume">
+                            Resume
+                          </FieldLabel>
+                          <Input
+                            id="get-started-resume"
+                            type="file"
+                            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            disabled={pending}
+                            aria-invalid={fieldState.invalid}
+                            onChange={(event) => {
+                              field.onChange(event.target.files?.[0]);
+                            }}
+                          />
+                          {fieldState.invalid && (
+                            <FieldError errors={[fieldState.error]} />
+                          )}
+                        </Field>
+                      )}
+                    />
+
+                    {serverError ? (
+                      <Alert variant="destructive">
+                        <AlertDescription>{serverError}</AlertDescription>
+                      </Alert>
+                    ) : null}
+
+                    <Field>
+                      <Button
+                        type="submit"
+                        form="get-started-form"
+                        className="w-full"
+                        disabled={pending}
+                        size="lg"
+                      >
+                        {pending ? "Submitting…" : "Submit"}
+                      </Button>
+                    </Field>
+                  </FieldGroup>
+                </form>
+              )}
             </CardContent>
           </div>
         </div>

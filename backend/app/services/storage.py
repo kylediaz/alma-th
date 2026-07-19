@@ -6,7 +6,6 @@ from urllib.parse import quote
 
 import boto3
 from botocore.client import Config
-from botocore.exceptions import ClientError
 
 from app.config import get_settings
 
@@ -37,19 +36,10 @@ def upload(*, key: str, body: BinaryIO | bytes, content_type: str) -> None:
     )
 
 
-def get_stream(key: str):
-    settings = get_settings()
-    try:
-        response = _client().get_object(Bucket=settings.s3_bucket, Key=key)
-    except ClientError as exc:
-        raise FileNotFoundError(f"Object not found: {key}") from exc
-    return response["Body"]
-
-
 def presign_get(
     key: str,
     *,
-    expires_in: int = 3600,
+    expires_in: int = 300,
     filename: str | None = None,
     content_type: str | None = None,
 ) -> str:

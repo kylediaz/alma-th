@@ -20,10 +20,10 @@ class Settings(BaseSettings):
     s3_force_path_style: bool = True
 
     resend_api_key: str = ""
-    from_email: str = "onboarding@resend.dev"
-    attorney_notify_email: str = ""
-    resend_template_prospect_confirmation: str = ""
-    resend_template_attorney_new_lead: str = ""
+    from_email: str = "alma@resend.kylediaz.com"
+    attorney_notify_email: str = "shared-inbox@alma.kylediaz.com"
+
+    public_url: str = "http://localhost:3000"
 
     session_cookie_name: str = "session_id"
     session_cookie_secure: bool = False
