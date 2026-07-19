@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://alma:alma@localhost:5432/alma"
 
     s3_endpoint: str = "http://localhost:9000"
+    # Host-reachable URL for browser-facing presigned links (Docker: http://localhost:9000).
+    # When empty, falls back to s3_endpoint.
+    s3_public_endpoint: str = ""
     s3_access_key: str = "minioadmin"
     s3_secret_key: str = "minioadmin"
     s3_bucket: str = "lead-files"

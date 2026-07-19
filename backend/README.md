@@ -2,60 +2,35 @@
 
 Lead intake API: public `POST /leads`, attorney session auth, Postgres + MinIO + Resend outbox.
 
-## Prerequisites
+For the full stack, prefer the root [`README.md`](../README.md) (`docker compose up --build`).
 
-1. Python 3.12+
-2. [uv](https://github.com/astral-sh/uv) (recommended) or pip
-3. From the **repo root**, start infra:
+## Run with Docker Compose (recommended)
+
+From the repo root:
 
 ```bash
-docker compose up -d
+cp .env.example .env
+docker compose up --build
 ```
 
-This starts Postgres (`localhost:5432`) and MinIO (`localhost:9000`, bucket `lead-files`).
+The `backend` service migrates, seeds, and serves on http://localhost:8000.
 
-## Setup
+## Run on the host
+
+1. Python 3.12+ and [uv](https://github.com/astral-sh/uv)
+2. Start infra: `docker compose up -d postgres minio minio-init`
 
 ```bash
 cd backend
 uv sync
-```
-
-Or with pip:
-
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-## Migrate + dev seed
-
-```bash
-# from backend/
 uv run alembic upgrade head
 uv run python scripts/dev_seed.py
-```
-
-`scripts/dev_seed.py` is **dev-only**. It upserts hardcoded local attorneys (see the script for usernames/passwords). Do not run against production.
-
-
-
-## Run API
-
-```bash
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-- Health: `GET http://localhost:8000/health`
-- OpenAPI: `http://localhost:8000/docs`
-- CORS allows `http://localhost:3000` with credentials (session cookie).
-
-
+`scripts/dev_seed.py` is **dev-only** (hardcoded local attorneys). Do not run against production.
 
 ## Useful endpoints
-
 
 | Method  | Path                 | Auth                                   |
 | ------- | -------------------- | -------------------------------------- |
@@ -66,14 +41,11 @@ uv run uvicorn app.main:app --reload --port 8000
 | `GET`   | `/leads`             | attorney                               |
 | `GET`   | `/leads/{id}`        | attorney (includes `resume_url`)       |
 | `PATCH` | `/leads/{id}`        | attorney (`{"status":"REACHED_OUT"}`)  |
-| `GET`   | `/leads/{id}/resume` | attorney (presigned URL JSON, not file)|
-
-
-
+| `GET`   | `/leads/{id}/resume` | attorney (presigned URL JSON)          |
 
 ## Notes
 
 - Resume: `.pdf` / `.docx` only, max 5MB (`RESUME_MAX_BYTES`).
-- Object storage keys look like `leads/{uuid}/resume.pdf` — **key only** in DB; bucket from `S3_BUCKET`.
-- Email uses a transactional outbox + same-process flush after commit. Missing `RESEND_API_KEY` logs a warning and marks outbox rows `FAILED`; the lead is kept.
-
+- Object keys look like `leads/{uuid}/resume.pdf` — key only in DB; bucket from `S3_BUCKET`.
+- Presigned URLs use `S3_PUBLIC_ENDPOINT` when set (browser-reachable), otherwise `S3_ENDPOINT`.
+- Email uses a transactional outbox + same-process flush after commit. Missing `RESEND_API_KEY` marks outbox rows `FAILED`; the lead is kept.
