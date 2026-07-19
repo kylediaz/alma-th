@@ -1,36 +1,34 @@
 # Frontend design
 
-Product UI for Alma lead intake: a public prospect form and an attorney console. Stack is Next.js App Router + existing shadcn/ui. Visual tone stays neutral and utilitarian (no marketing hero, no purple SaaS theme).
+Product UI for Alma lead intake: a public prospect form and an attorney console. Stack is Next.js App Router + shadcn/ui. Visual tone stays neutral and utilitarian.
 
 Companion system design: [DESIGN.md](./DESIGN.md).
 
 ## Surfaces
 
-
-| Surface        | Route                      | Who      | Purpose                                         |
-| -------------- | -------------------------- | -------- | ----------------------------------------------- |
-| Landing page   | `/`                        | Prospect | Generic lander. Leave blank.                    |
-| Lead form      | `/get-started`             | Prospect | Name, email, resume → create lead               |
-| Attorney login | `/admin/login`             | Attorney | Username/password → session cookie              |
-| Leads table    | `/admin/dashboard/leads`   | Attorney | List leads, download resume, mark `REACHED_OUT` |
-
+| Surface        | Route                            | Who      | Purpose |
+| -------------- | -------------------------------- | -------- | ------- |
+| Landing page   | `/`                              | Prospect | Blank placeholder |
+| Lead form      | `/get-started`                   | Prospect | Name, email, resume → create lead |
+| Attorney login | `/admin/login`                   | Attorney | Username/password → session cookie |
+| Leads table    | `/admin/dashboard/leads`         | Attorney | Paginated list + status filter |
+| Lead detail    | `/admin/dashboard/leads/[id]`    | Attorney | Fields, mark reached out, resume preview |
 
 No public signup. Attorney accounts are seeded out-of-band (`backend/scripts/dev_seed.py`).
 
 ## Routing map
 
 ```
-/                        → blank landing (placeholder)
-/get-started             → public LeadForm (no auth)
-/admin/login             → LoginForm; if already authed, redirect to /admin/dashboard/leads
-/admin/dashboard/leads   → protected console; if unauthenticated, redirect to /admin/login
+/                              → blank landing
+/get-started                   → public lead form (no auth)
+/admin/login                   → login form
+/admin/dashboard/leads         → protected table; unauthenticated → /admin/login
+/admin/dashboard/leads/[id]    → protected detail; unauthenticated → /admin/login
 ```
 
-Deep links and bookmarks to `/admin/dashboard/leads` always go through an auth check (`GET /auth/me`).
+Dashboard routes mount inside `DashboardShell`, which calls `GET /auth/me` and redirects to `/admin/login` on 401.
 
 ## Auth & API access
-
-### Session cookie
 
 FastAPI owns sessions:
 
@@ -38,176 +36,133 @@ FastAPI owns sessions:
 - `POST /auth/logout` → delete session + clear cookie
 - `GET /auth/me` → current attorney (401 if missing/expired)
 
-### How Next talks to the API
+The browser calls FastAPI at `NEXT_PUBLIC_API_URL` with `credentials: "include"`. No Next.js route-handler proxy. Backend CORS allows `http://localhost:3000` with credentials (see root `.env.example` `CORS_ORIGINS`).
 
-**Preferred:** browser calls FastAPI directly at `NEXT_PUBLIC_API_URL` with `credentials: "include"`.
+Login success → navigate to `/admin/dashboard/leads`. Logout → `POST /auth/logout` → `/admin/login`.
 
-- Backend already enables CORS for `http://localhost:3000` with `allow_credentials=True` (see root `.env.example` `CORS_ORIGINS`).
-- No Next.js route-handler proxy in v1 unless cookie/CORS friction appears later.
-- All authenticated fetches (and resume download) use `credentials: "include"` so the API cookie is sent cross-port on localhost.
+## Public form (`/get-started`)
 
-### Protecting `/admin/dashboard/leads`
-
-Client page mounts → `GET /auth/me`:
-
-- 200 → render console (store `display_name` for header)
-- 401 → `router.replace("/admin/login")`
-
-Login success → navigate to `/admin/dashboard/leads`. Logout → `POST /auth/logout` → navigate to `/admin/login`.
-
-## Public form UX (`/get-started`)
-
-**Fields**
-
-
-| Field      | Control | Rules (mirror backend)                                                                |
-| ---------- | ------- | ------------------------------------------------------------------------------------- |
-| First name | text    | required, max 100                                                                     |
-| Last name  | text    | required, max 100                                                                     |
-| Email      | email   | required, valid email, max 320                                                        |
-| Resume     | file    | required; `.pdf` / `.docx` only; client hint max **5MB** (`RESUME_MAX_BYTES` default) |
-
+| Field      | Control | Rules (mirror backend) |
+| ---------- | ------- | ---------------------- |
+| First name | text    | required, max 100 |
+| Last name  | text    | required, max 100 |
+| Email      | email   | required, valid email, max 320 |
+| Resume     | file    | required; `.pdf` / `.docx`; client hint max **5MB** |
 
 **Submit:** `POST /leads` as `multipart/form-data` (`first_name`, `last_name`, `email`, `resume`).
 
-**Success:** inline confirmation (lead created). Clear or disable the form; do not require login.
+**Success:** replace the form with a confirmation view (`role="status"`, `aria-live="polite"`). Do not require login.
 
-**Error:** show API `detail` (string or validation message). Client-side checks for empty fields, bad extension, and size run before upload.
+**Error:** show API `detail` when present. Client-side checks for empty fields, bad extension, and size run before upload.
 
-**Footer/link:** discreet “Attorney login” → `/admin/login`.
+## Attorney console
 
-## Attorney console (`/admin/dashboard/leads`)
+### Shell
 
-### Header
+- Sidebar product label (Alma) + Leads nav
+- Account menu with logout
+- Auth gate via `useMe` / `GET /auth/me`
 
-- Product label (Alma)
-- Greeting with `display_name`
-- Logout button
+### Leads table (`/admin/dashboard/leads`)
 
-### Table columns
+| Column   | Source |
+| -------- | ------ |
+| Received | `created_at` (locale datetime) |
+| Name     | `first_name` + `last_name` |
+| Email    | `email` |
+| Status   | `PENDING` \| `REACHED_OUT` (badge) |
 
+Row click → `/admin/dashboard/leads/{id}`.
 
-| Column    | Source                            |
-| --------- | --------------------------------- |
-| Submitted | `created_at` (locale datetime)    |
-| Name      | `first_name` + `last_name`        |
-| Email     | `email`                           |
-| Status    | `PENDING` \| `REACHED_OUT` (badge) |
-| Resume    | filename link/button              |
-| Actions   | “Mark reached out” when `PENDING` |
+**Pagination / filter** — offset pagination via URL search params (`nuqs`):
 
+| Param    | Meaning            | Default | Notes |
+| -------- | ------------------ | ------- | ----- |
+| `page`   | 1-based page index | `1`     | |
+| `status` | optional filter    | omitted | `PENDING` \| `REACHED_OUT` |
 
-Newest first (API already sorts `created_at DESC`).
-
-### Pagination
-
-Leads use **offset pagination** via URL search params (bookmarkable, browser Back/Forward friendly).
-
-| Param       | Meaning            | Default | Notes                         |
-| ----------- | ------------------ | ------- | ----------------------------- |
-| `page`      | 1-based page index | `1`     |                               |
-| `page_size` | items per page     | `20`    | Allowlist: 10 / 20 / 50       |
-| `status`    | optional filter    | omitted | `PENDING` \| `REACHED_OUT`    |
-
-Example: `/admin/dashboard/leads?page=2&page_size=20&status=PENDING`
-
-URL state is managed with **nuqs**; list data with **TanStack Query** (`queryKey: ["leads", page, page_size, status]`). TanStack Table owns pagination UI state synced to the URL.
-
-**API:**
+Page size is fixed at **50** in the client. List data uses TanStack Query (`leadKeys.list({ page, page_size, status })`).
 
 ```
-GET /leads?page=1&page_size=20&status=PENDING
-→ { items: LeadOut[], total: number, page: number, page_size: number }
+GET /leads?page=1&page_size=50&status=PENDING
+→ { items: Lead[], total, page, page_size }
 ```
 
-### Actions
+Empty / loading / error states are handled in the table UI (retry on failure).
 
-1. **Resume** — `GET /leads/{id}/resume` with credentials; download via blob + filename (from `Content-Disposition` or `resume_original_filename`). Do not rely on bare `window.open` alone for cookie reliability.
-   - **Follow-up:** in-browser PDF viewer with [`react-pdf`](https://projects.wojtekmaj.pl/react-pdf/); DOCX stays download-only.
-2. **Mark reached out** — `PATCH /leads/{id}` with `{ "status": "REACHED_OUT" }`; update row in place; disable/hide action once reached out. Idempotent if already `REACHED_OUT`.
+### Lead detail (`/admin/dashboard/leads/[id]`)
 
-Empty state: short message when the list is empty.
-
-Loading / error: skeleton or simple loading text; retry-friendly error if list fetch fails.
+- Load via `GET /leads/{id}` (includes short-lived `resume_url`).
+- Show status, email, received time, resume filename.
+- **Mark reached out** — `PATCH /leads/{id}` with `{ "status": "REACHED_OUT" }` when status is `PENDING`; hide once reached out. Idempotent if already `REACHED_OUT`.
+- **Resume**
+  - PDF: in-browser viewer (`@embedpdf/*`) using `resume_url`.
+  - DOCX (and non-PDF): download link via `resume_url` (no in-browser preview).
 
 ## State & data fetching
 
-**Approach: client components +** `fetch` **to FastAPI.**
+Client components + `fetch` to FastAPI through `frontend/src/lib/api-client.ts` and feature API modules.
 
-Rationale:
-
-- Session cookie is set by the API origin; browser `credentials: "include"` is the natural fit.
-- Avoids duplicating auth/proxy logic in Next route handlers for a takehome.
-- Keeps pages easy to follow: form/login/leads each own their loading and error UI.
-
-Shared helpers live in `frontend/src/lib/api.ts` (base URL, JSON/multipart helpers, typed errors). No global state library. React Compiler is already enabled — no ad-hoc `useMemo`/`useCallback` unless needed.
+- Feature folders: `features/auth`, `features/leads` (types, api, hooks, components).
+- TanStack Query for server state; React Compiler enabled.
+- Providers: `AppProviders` wraps QueryClient + `NuqsAdapter`.
 
 ## Env vars
 
-
-| Variable              | Example                 | Notes                             |
-| --------------------- | ----------------------- | --------------------------------- |
+| Variable              | Example                 | Notes |
+| --------------------- | ----------------------- | ----- |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | FastAPI origin; no trailing slash |
-
-
-Frontend does not read server-only secrets. Resume max size is a client constant matching the backend default (5MB); backend remains authoritative.
-
-Copy for local frontend:
 
 ```bash
 # frontend/.env.local
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-Ensure API `CORS_ORIGINS` includes the Next origin (default `http://localhost:3000`).
+Resume max size is a client constant matching the backend default (5MB); backend remains authoritative.
 
-## Component / file layout (target)
+## File layout
 
 ```
 frontend/src/
   app/
-    layout.tsx                       # shell, metadata
+    layout.tsx
     page.tsx                         # blank landing
-    get-started/page.tsx             # public LeadForm
+    get-started/page.tsx             # public form
     admin/
-      login/page.tsx                 # login form (inlined, "use client")
+      login/page.tsx
       dashboard/
-        leads/page.tsx               # leads DataTable + page URL params (nuqs + React Query)
+        layout.tsx                   # DashboardShell
+        leads/page.tsx               # table + URL params
+        leads/[id]/page.tsx         # detail + resume
+        leads/columns.tsx
   components/
-    data-table.tsx                   # TanStack table + pagination controls
-    app-providers.tsx                # QueryClient + NuqsAdapter
-    lead-form.tsx
-    resume-viewer.tsx                # follow-up: react-pdf (PDF) / download (DOCX)
-    site-header.tsx
+    app-providers.tsx
     dashboard-shell.tsx
+    data-table.tsx
+    ui/                              # shadcn primitives
+  features/
+    auth/
+      api/auth.api.ts
+      hooks/
+      types/
+    leads/
+      api/leads.api.ts
+      components/resume-pdf-viewer.tsx
+      hooks/
+      types/
   lib/
-    api.ts                           # fetch wrappers + credentials
-    types.ts
-    constants.ts                     # resume extensions, max bytes
+    api-client.ts
+    utils.ts
 ```
-
-UI primitives: existing shadcn (`Button`, `Input`, `Label`/`Field`, `Table`, `Badge`, `Alert`, `Dialog`/`Sheet`, `Card` as needed for form/login/viewer containers only).
-
-Dependencies: `@tanstack/react-table`, `@tanstack/react-query`, `nuqs`. `react-pdf` for in-browser resume view (follow-up).
-
-## Suggested build order
-
-1. `lib/api.ts` + `types.ts` + `constants.ts` + env (`NEXT_PUBLIC_API_URL`)
-2. Blank `/` + `/get-started` form
-3. `/admin/login` + auth redirect helpers
-4. `/admin/dashboard/leads` DataTable + page URL pagination + status filter
-5. `resume-viewer` with `react-pdf` (PDF view + DOCX download fallback)
-6. Wire footer/header links and empty/loading/error states
 
 ## Out of scope (frontend v1)
 
 - Lead assignment / ownership UI
 - Extra statuses beyond `PENDING` / `REACHED_OUT`
 - Duplicate-email warnings
-- In-browser DOCX rendering (PDF via react-pdf only); virus scan messaging
+- In-browser DOCX rendering
 - Public attorney signup or password reset
-- Filters, search, sorting controls (pagination is in scope)
-- Dark-mode product theming beyond default tokens
+- Search / sorting controls
 - Next.js middleware cookie gate (API cookie is not on the Next host)
-- Server Actions / BFF proxy (unless later required)
+- Server Actions / BFF proxy
 - Email delivery status in the console
